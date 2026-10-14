@@ -1,0 +1,166 @@
+<!--
+========================================================================================
+FILE: templates/db_view.html
+PURPOSE:
+  SUCS (Smart University Complaint System) In-Browser SQLite Database Inspector.
+  This template renders a live, real-time diagnostic dashboard showing all rows and
+  columns across the primary database tables (`User` and `Complaint`).
+
+WHY THIS VIEW EXISTS (Senior Engineering Decision):
+  - Solves the evaluator/reviewer dilemma: In academic evaluations and multi-developer
+    hand-offs, reviewers often lack dedicated SQLite desktop GUI tools (e.g., DB Browser
+    for SQLite, SQLite Viewer VS Code extensions, or CLI sqlite3).
+  - Provides instant 100% transparency into the underlying SQLite state (`sucs_prototype.db`)
+    directly via standard web browser at `http://127.0.0.1:5001/db-view`.
+  - Enables developers to verify password hashes, foreign key links (`StudentID`),
+    grouping keys (`GroupID`), and status transitions in real time without terminal access.
+
+SECURITY NOTICE:
+  - This route is designed for prototype evaluation and academic demonstration.
+  - In a production environment, this route must be guarded by strict SuperAdmin RBAC
+    or disabled entirely to prevent data exposure.
+========================================================================================
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SUCS Database Viewer</title>
+  <!-- Tailwind CSS CDN for dark-mode developer console aesthetics -->
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen p-6">
+  <div class="max-w-7xl mx-auto space-y-8">
+    
+    <!-- =============================================================================== -->
+    <!-- HEADER: Inspector branding, active database file indicator, and app return link -->
+    <!-- =============================================================================== -->
+    <div class="flex justify-between items-center border-b border-slate-700 pb-4">
+      <div>
+        <h1 class="text-2xl font-bold text-white flex items-center gap-2">
+          <span>🗄️ SQLite Database Live Viewer</span>
+          <!-- Active SQLite Database File -->
+          <span class="text-xs bg-blue-600 px-2 py-0.5 rounded font-mono">sucs_prototype.db</span>
+        </h1>
+        <p class="text-xs text-slate-400 mt-1">Live inspection view of all database tables and rows</p>
+      </div>
+      <!-- Quick navigation link back to application portal -->
+      <a href="/" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs rounded-lg border border-slate-700">← Back to App</a>
+    </div>
+
+    <!-- =============================================================================== -->
+    <!-- TABLE 1: User (Authentication, User Identity, and RBAC Roles)                   -->
+    <!-- Displays seeded accounts and their salted bcrypt password hashes.               -->
+    <!-- =============================================================================== -->
+    <div class="bg-slate-800 rounded-2xl p-6 border border-slate-700 shadow-xl space-y-4">
+      <h2 class="text-lg font-bold text-emerald-400 flex items-center justify-between">
+        <span>Table: User</span>
+        <span class="text-xs font-mono bg-slate-700 text-slate-300 px-2 py-0.5 rounded">{{ users|length }} rows</span>
+      </h2>
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-xs">
+          <thead class="bg-slate-900 text-slate-400 uppercase font-semibold">
+            <tr>
+              <th class="p-3">ID</th>
+              <th class="p-3">Username</th>
+              <th class="p-3">Role</th>
+              <th class="p-3">PasswordHash</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-700">
+            {% for u in users %}
+            <tr class="hover:bg-slate-750">
+              <!-- Primary Key -->
+              <td class="p-3 font-mono font-bold text-blue-400">{{ u.ID }}</td>
+              <!-- Login identifier -->
+              <td class="p-3 font-semibold text-white">{{ u.Username }}</td>
+              <!-- Role-Based Access Control tag -->
+              <td class="p-3">
+                <span class="px-2 py-0.5 rounded font-bold text-[10px] uppercase {% if u.Role == 'Admin' %}bg-emerald-900 text-emerald-300{% elif u.Role == 'HOD' %}bg-purple-900 text-purple-300{% else %}bg-blue-900 text-blue-300{% endif %}">
+                  {{ u.Role }}
+                </span>
+              </td>
+              <!-- 
+                One-Way Salted Hash:
+                Truncated in view to prevent layout breaking, proving passwords are not stored in plaintext.
+              -->
+              <td class="p-3 font-mono text-[10px] text-slate-400 truncate max-w-xs">{{ u.PasswordHash }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- =============================================================================== -->
+    <!-- TABLE 2: Complaint (Lifecycle, Urgency, Routing, Grouping, and Audit Trail)     -->
+    <!-- Contains the complete relational schema records for student complaints.        -->
+    <!-- =============================================================================== -->
+    <div class="bg-slate-800 rounded-2xl p-6 border border-slate-700 shadow-xl space-y-4">
+      <h2 class="text-lg font-bold text-blue-400 flex items-center justify-between">
+        <span>Table: Complaint</span>
+        <span class="text-xs font-mono bg-slate-700 text-slate-300 px-2 py-0.5 rounded">{{ complaints|length }} rows</span>
+      </h2>
+      
+      <!-- Empty State -->
+      {% if complaints|length == 0 %}
+        <p class="text-xs text-slate-400 py-4">No complaints recorded in database.</p>
+      {% else %}
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs">
+            <thead class="bg-slate-900 text-slate-400 uppercase font-semibold">
+              <tr>
+                <th class="p-3">ID</th>
+                <th class="p-3">StudentID</th>
+                <th class="p-3">Category</th>
+                <th class="p-3">DirectedAgainst</th>
+                <th class="p-3">Description</th>
+                <th class="p-3">UrgencyLevel</th>
+                <th class="p-3">Status</th>
+                <th class="p-3">GroupID</th>
+                <th class="p-3">AdminComment</th>
+                <th class="p-3">DateSubmitted</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-700">
+              {% for c in complaints %}
+              <tr class="hover:bg-slate-750">
+                <!-- Complaint Primary Key -->
+                <td class="p-3 font-mono font-bold text-blue-400">#{{ c.ID }}</td>
+                <!-- Foreign key referencing User.ID -->
+                <td class="p-3 font-mono">User #{{ c.StudentID }}</td>
+                <!-- Classification Category -->
+                <td class="p-3 font-semibold">{{ c.Category }}</td>
+                <!-- Routing target (Used by HOD Conflict of Interest filter) -->
+                <td class="p-3">{{ c.DirectedAgainst }}</td>
+                <!-- Raw complaint description text -->
+                <td class="p-3 text-slate-300 max-w-xs truncate">{{ c.Description }}</td>
+                <!-- Computed or explicit Urgency (Emergency, High, Medium, Low) -->
+                <td class="p-3">
+                  <span class="px-2 py-0.5 rounded font-bold text-[10px] {% if c.UrgencyLevel == 'Emergency' %}bg-red-900 text-red-200 animate-pulse{% elif c.UrgencyLevel == 'High' %}bg-orange-900 text-orange-200{% elif c.UrgencyLevel == 'Medium' %}bg-amber-900 text-amber-200{% else %}bg-slate-700 text-slate-200{% endif %}">
+                    {{ c.UrgencyLevel }}
+                  </span>
+                </td>
+                <!-- Lifecycle Status (Pending, In-Progress, Solved, Forwarded) -->
+                <td class="p-3">
+                  <span class="px-2 py-0.5 rounded font-bold text-[10px] uppercase {% if c.Status == 'Solved' %}bg-emerald-900 text-emerald-300{% elif c.Status == 'In-Progress' %}bg-blue-900 text-blue-300 animate-pulse{% elif c.Status == 'Forwarded' %}bg-purple-900 text-purple-300{% else %}bg-amber-900 text-amber-300{% endif %}">
+                    {{ c.Status }}
+                  </span>
+                </td>
+                <!-- Smart Group ID linkage -->
+                <td class="p-3 font-mono text-indigo-300">{{ c.GroupID or '-' }}</td>
+                <!-- Formal administrative closure note -->
+                <td class="p-3 text-emerald-300 max-w-xs truncate">{{ c.AdminComment or '-' }}</td>
+                <!-- Submission Timestamp -->
+                <td class="p-3 font-mono text-[10px] text-slate-400">{{ c.DateSubmitted }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+</body>
+</html>

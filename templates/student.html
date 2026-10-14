@@ -1,0 +1,409 @@
+<!--
+========================================================================================
+Smart University Complaint System (SUCS v1.0) - Student Portal View
+========================================================================================
+File: templates/student.html
+Purpose:
+  - First-page Student Dashboard Overview with ticket open, in-progress, and solved counts.
+  - Displays monthly quota utilization (SRS FR3 / TC-10 to TC-12).
+  - Provides categorized complaint submission form with expanded Category and Target options
+    including 'Others', and 1-Click Explicit Emergency Hazard trigger.
+  - Provides direct navigation link to dedicated Submitted Complaints History page (/student/complaints).
+========================================================================================
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SUCS Student Portal</title>
+  <!-- Load Tailwind CSS framework via CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+  <!-- Top Navigation Bar -->
+  <nav class="bg-slate-900 text-white p-4 border-b border-slate-800 flex justify-between items-center">
+    <div class="flex items-center gap-3">
+      <div class="p-2 bg-blue-600 rounded-lg">🎓</div>
+      <div>
+        <h1 class="font-bold text-base">Smart University Complaint System</h1>
+        <p class="text-xs text-blue-300">Student Portal • {{ session.username }}</p>
+      </div>
+    </div>
+    <div class="flex items-center gap-3">
+      <a href="/student/complaints" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 rounded-lg text-xs font-semibold">📑 My Complaints</a>
+      <a href="/logout" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 rounded-lg text-xs font-semibold">Logout</a>
+    </div>
+  </nav>
+
+  <!-- Main Content Container -->
+  <div class="max-w-5xl mx-auto p-6 space-y-6">
+
+    <!-- Flash Alert Notifications -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="p-4 rounded-xl text-sm font-semibold {% if category == 'danger' %}bg-red-50 text-red-800 border border-red-200{% elif category == 'success' %}bg-emerald-50 text-emerald-800 border border-emerald-200{% else %}bg-blue-50 text-blue-800 border border-blue-200{% endif %}">
+            {{ message }}
+          </div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    <!-- =============================================================================== -->
+    <!-- SECTION 1: FIRST PAGE DASHBOARD OVERVIEW METRICS                                -->
+    <!-- Shows open counts, in-progress counts, solved counts, and quota meter.          -->
+    <!-- =============================================================================== -->
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <!-- Open Tickets -->
+      <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
+        <span class="text-xs font-bold text-slate-500 uppercase">Open Complaints</span>
+        <div class="mt-2 flex items-baseline justify-between">
+          <span class="text-2xl font-black text-amber-600">{{ open_count }}</span>
+          <span class="text-xs bg-amber-50 text-amber-700 px-2 py-0.5 rounded font-bold">Pending Review</span>
+        </div>
+      </div>
+
+      <!-- In-Progress Tickets -->
+      <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
+        <span class="text-xs font-bold text-slate-500 uppercase">In-Progress</span>
+        <div class="mt-2 flex items-baseline justify-between">
+          <span class="text-2xl font-black text-blue-600">{{ in_progress_count }}</span>
+          <span class="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded font-bold">Investigating</span>
+        </div>
+      </div>
+
+      <!-- Solved Tickets -->
+      <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
+        <span class="text-xs font-bold text-slate-500 uppercase">Solved Count</span>
+        <div class="mt-2 flex items-baseline justify-between">
+          <span class="text-2xl font-black text-emerald-600">{{ solved_count }}</span>
+          <span class="text-xs bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded font-bold">Resolved</span>
+        </div>
+      </div>
+
+      <!-- Total Quota Utilization -->
+      <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
+        <span class="text-xs font-bold text-slate-500 uppercase">Monthly Quota</span>
+        <div class="mt-2 flex items-baseline justify-between">
+          <span class="text-2xl font-black text-indigo-600">{{ quota.remaining }}</span>
+          <span class="text-xs text-slate-500 font-bold">of {{ quota.limit }} Left</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Quick Link Banner to Dedicated Complaints Page -->
+    <div class="bg-gradient-to-r from-blue-900 to-indigo-900 text-white p-5 rounded-2xl shadow flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      <div>
+        <h3 class="font-bold text-base flex items-center gap-2">
+          <span>📑 Submitted Complaints History</span>
+          <span class="bg-blue-600 text-xs px-2 py-0.5 rounded-full font-mono">{{ complaints|length }} Records</span>
+        </h3>
+        <p class="text-xs text-blue-200 mt-1">Submitted complaints are tracked on a separate dedicated page with full review updates and official responses.</p>
+      </div>
+      <a href="/student/complaints" class="px-4 py-2 bg-white text-blue-900 hover:bg-blue-50 font-bold text-xs rounded-xl shadow transition whitespace-nowrap cursor-pointer">
+        View All My Complaints →
+      </a>
+    </div>
+
+    <!-- =============================================================================== -->
+    <!-- SECTION 2: COMPLAINT SUBMISSION FORM (With Category & Target Others Options)    -->
+    <!-- =============================================================================== -->
+    <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+      <div class="flex justify-between items-center border-b pb-3">
+        <div>
+          <h3 class="text-base font-bold text-slate-900">Submit New Complaint</h3>
+          <p class="text-xs text-slate-500">Provide complete details. Similar issues related to the same department/person will be auto-combined for faster resolution.</p>
+        </div>
+        <span class="text-xs font-bold text-slate-400">Quota: {{ quota.remaining }}/{{ quota.limit }} Remaining</span>
+      </div>
+
+      {% if quota.remaining <= 0 %}
+        <div class="p-4 bg-amber-50 text-amber-800 text-xs rounded-xl border border-amber-200 font-semibold">
+          ⚠️ <strong>Monthly Limit Reached:</strong> You have submitted 5 complaints this calendar month. Your quota will reset on the 1st of next month.
+        </div>
+      {% else %}
+        <form action="/submit-complaint" method="POST" class="space-y-4">
+          
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            
+            <!-- Category Dropdown with "Others" -->
+            <div>
+              <label class="block text-xs font-bold uppercase text-slate-700 mb-1">Category *</label>
+              <select name="category" id="category_select" onchange="toggleCategoryOther()" required class="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                <option value="">-- Select Category --</option>
+                <option value="Academic">Academic / Examination Issue</option>
+                <option value="Facilities">Facilities & Maintenance</option>
+                <option value="Hostel">Hostel & Accommodation</option>
+                <option value="IT/Network">IT & Network Services</option>
+                <option value="Finance">Finance & Fee Accounts</option>
+                <option value="Infrastructure">Infrastructure Hazard</option>
+                <option value="Harassment">Harassment / Disciplinary</option>
+                <option value="Transportation">Transportation Services</option>
+                <option value="Library">Library Management</option>
+                <option value="Cafeteria">Cafeteria / Canteen Food Quality</option>
+                <option value="Others">Others (Specify below)</option>
+              </select>
+
+              <!-- Conditional Custom Category Input -->
+              <div id="custom_category_div" class="hidden mt-2">
+                <label class="block text-[11px] font-bold text-blue-700 mb-1">Specify Custom Category *</label>
+                <input type="text" name="custom_category" id="custom_category_input" placeholder="Type custom category name..." class="w-full px-3 py-1.5 border border-blue-300 rounded-xl text-xs bg-blue-50/50 focus:ring-2 focus:ring-blue-500 focus:outline-none"/>
+              </div>
+            </div>
+
+            <!-- Directed Against Dropdown with "Others" -->
+            <div>
+              <label class="block text-xs font-bold uppercase text-slate-700 mb-1">Directed Against (Department / Person) *</label>
+              <select name="directed_against" id="directed_select" onchange="toggleDirectedOther()" required class="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                <option value="">-- Select Target Entity --</option>
+                <option value="Faculty / Teacher">Faculty / Course Instructor</option>
+                <option value="Administration Staff">Administration Office</option>
+                <option value="HOD Office">Head of Department (HOD)</option>
+                <option value="IT Support Desk">IT Support Desk</option>
+                <option value="Transport Department">Transport Department</option>
+                <option value="Hostel Warden / Management">Hostel Warden / Management</option>
+                <option value="Finance / Accounts Office">Finance / Accounts Office</option>
+                <option value="Examination Department">Examination Department</option>
+                <option value="Library Management">Library Management</option>
+                <option value="Cafeteria Management">Cafeteria Management</option>
+                <option value="Security Office">Campus Security Office</option>
+                <option value="Others">Others (Specify below)</option>
+              </select>
+
+              <!-- Conditional Custom Directed Against Input -->
+              <div id="custom_directed_div" class="hidden mt-2">
+                <label class="block text-[11px] font-bold text-blue-700 mb-1">Specify Target Person / Department *</label>
+                <input type="text" name="custom_directed_against" id="custom_directed_input" placeholder="Type target department or person name..." class="w-full px-3 py-1.5 border border-blue-300 rounded-xl text-xs bg-blue-50/50 focus:ring-2 focus:ring-blue-500 focus:outline-none"/>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Description Textarea -->
+          <div>
+            <label class="block text-xs font-bold uppercase text-slate-700 mb-1">Detailed Description *</label>
+            <textarea name="description" id="complaint_desc" rows="4" required placeholder="Describe the incident or grievance clearly with dates, locations, or equipment details..." class="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"></textarea>
+          </div>
+
+          <!-- Emergency Hazard Controls -->
+          <div class="p-3 bg-red-50 border border-red-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div class="flex items-center gap-2">
+              <input type="checkbox" name="is_emergency" id="emergency_checkbox" class="w-4 h-4 text-red-600 rounded cursor-pointer"/>
+              <label for="emergency_checkbox" class="text-xs font-bold text-red-900 cursor-pointer">
+                Mark as Critical Emergency Hazard (Requires immediate attention)
+              </label>
+            </div>
+            
+            <button type="button" onclick="triggerEmergencyHazard()" class="px-2.5 py-1 bg-red-600 hover:bg-red-700 text-white text-[11px] font-bold rounded-lg shadow cursor-pointer self-start sm:self-auto">
+              ⚡ 1-Click Hazard Fill
+            </button>
+          </div>
+
+          <!-- Form Submit Button -->
+          <button type="submit" class="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm rounded-xl shadow transition cursor-pointer">
+            Submit Complaint
+          </button>
+        </form>
+      {% endif %}
+    </div>
+
+    <!-- =============================================================================== -->
+    <!-- SECTION 3: RECENT COMPLAINTS PREVIEW (With Details Modal)                       -->
+    <!-- =============================================================================== -->
+    <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+      <div class="flex justify-between items-center border-b pb-2">
+        <h3 class="text-sm font-bold text-slate-900">Recent Complaints Preview</h3>
+        <a href="/student/complaints" class="text-xs text-blue-600 hover:underline font-semibold">View All History ({{ complaints|length }}) →</a>
+      </div>
+
+      {% if complaints|length == 0 %}
+        <p class="text-xs text-slate-400 py-4 text-center">No complaints filed yet.</p>
+      {% else %}
+        <div class="space-y-3">
+          {% for c in complaints[:3] %}
+            <div class="p-3.5 rounded-xl border border-slate-200 bg-white flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
+              <div class="space-y-1 text-xs">
+                <div class="flex items-center gap-2">
+                  <span class="font-mono font-bold text-blue-600">#{{ c.ID }}</span>
+                  {% if c.UrgencyLevel == 'Emergency' %}
+                    <span class="px-2 py-0.5 bg-red-600 text-white font-extrabold text-[10px] rounded animate-pulse">EMERGENCY</span>
+                  {% endif %}
+                  <span class="font-semibold text-slate-800">{{ c.Category }}</span>
+                  <span class="text-slate-400">• {{ c.DateSubmitted }}</span>
+                </div>
+                <p class="text-slate-600">Target: <strong>{{ c.DirectedAgainst }}</strong></p>
+                {% if c.GroupID %}
+                  <span class="text-indigo-600 text-[11px] font-semibold bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
+                    🔗 Combined under Group #{{ c.GroupID }}
+                  </span>
+                {% endif %}
+              </div>
+
+              <div class="flex items-center gap-2">
+                <!-- Safe DOM Container -->
+                <div id="cdata-{{ c.ID }}" class="hidden"
+                     data-id="{{ c.ID }}"
+                     data-category="{{ c.Category }}"
+                     data-directed="{{ c.DirectedAgainst }}"
+                     data-urgency="{{ c.UrgencyLevel }}"
+                     data-status="{{ c.Status }}"
+                     data-date="{{ c.DateSubmitted }}"
+                     data-group="{{ c.GroupID or '' }}">
+                  <div class="desc-content">{{ c.Description }}</div>
+                  <div class="admin-comment-content">{{ c.AdminComment or '' }}</div>
+                </div>
+
+                <span class="px-2 py-0.5 rounded text-[11px] font-bold uppercase {% if c.Status == 'Solved' %}bg-emerald-100 text-emerald-800{% elif c.Status == 'In-Progress' %}bg-blue-100 text-blue-800{% elif c.Status == 'Forwarded' %}bg-purple-100 text-purple-800{% else %}bg-amber-100 text-amber-800{% endif %}">
+                  {{ c.Status }}
+                </span>
+
+                <button type="button" onclick="openDetailModal('{{ c.ID }}')" class="px-2.5 py-1 bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-lg text-xs font-semibold border cursor-pointer">
+                  👁️ Details
+                </button>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    </div>
+
+  </div>
+
+  <!-- Complaint Details Modal -->
+  <div id="detailModal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+    <div class="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4 border border-slate-200 relative">
+      <div class="flex justify-between items-center border-b pb-3">
+        <h3 class="font-bold text-slate-900 text-lg flex items-center gap-2">
+          <span>Complaint Details</span>
+          <span id="m_id" class="font-mono text-xs font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-200"></span>
+        </h3>
+        <button onclick="closeDetailModal()" class="text-slate-400 hover:text-slate-600 font-bold text-xl px-2 cursor-pointer">&times;</button>
+      </div>
+
+      <div class="space-y-3 text-xs text-slate-700">
+        <div class="flex justify-between items-center bg-slate-50 p-2.5 rounded-lg border">
+          <span>Status: <strong id="m_status" class="font-bold uppercase"></strong></span>
+          <span>Priority: <strong id="m_urgency" class="font-bold"></strong></span>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <span class="text-slate-400 block font-semibold">Category</span>
+            <strong id="m_category" class="text-slate-900 text-sm"></strong>
+          </div>
+          <div>
+            <span class="text-slate-400 block font-semibold">Directed Against</span>
+            <strong id="m_directed" class="text-slate-900 text-sm"></strong>
+          </div>
+        </div>
+
+        <div>
+          <span class="text-slate-400 block font-semibold">Date Submitted</span>
+          <span id="m_date" class="text-slate-800 font-mono"></span>
+        </div>
+
+        <div id="m_group_container" class="hidden">
+          <span class="text-indigo-600 font-semibold block bg-indigo-50 p-2 rounded border border-indigo-200">
+            Combined under Master Group <strong id="m_group"></strong>
+          </span>
+        </div>
+
+        <div>
+          <span class="text-slate-400 block font-semibold mb-1">Full Description</span>
+          <div id="m_description" class="p-3 bg-slate-50 rounded-xl border border-slate-200 text-slate-800 text-xs leading-relaxed max-h-48 overflow-y-auto break-all break-words [word-break:break-word] whitespace-pre-wrap"></div>
+        </div>
+
+        <div id="m_admin_comment_container" class="hidden">
+          <span class="text-emerald-700 block font-bold mb-1">💬 Official Administrative Response</span>
+          <div id="m_admin_comment" class="p-3 bg-emerald-50 rounded-xl border border-emerald-200 text-emerald-900 text-xs leading-relaxed font-semibold"></div>
+        </div>
+      </div>
+
+      <div class="pt-3 border-t flex justify-end">
+        <button onclick="closeDetailModal()" class="px-4 py-2 bg-slate-800 text-white rounded-xl text-xs font-semibold hover:bg-slate-700 cursor-pointer">
+          Close Window
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function toggleCategoryOther() {
+      const select = document.getElementById('category_select');
+      const div = document.getElementById('custom_category_div');
+      const input = document.getElementById('custom_category_input');
+      if (select.value === 'Others') {
+        div.classList.remove('hidden');
+        input.required = true;
+      } else {
+        div.classList.add('hidden');
+        input.required = false;
+        input.value = '';
+      }
+    }
+
+    function toggleDirectedOther() {
+      const select = document.getElementById('directed_select');
+      const div = document.getElementById('custom_directed_div');
+      const input = document.getElementById('custom_directed_input');
+      if (select.value === 'Others') {
+        div.classList.remove('hidden');
+        input.required = true;
+      } else {
+        div.classList.add('hidden');
+        input.required = false;
+        input.value = '';
+      }
+    }
+
+    function triggerEmergencyHazard() {
+      document.getElementById('emergency_checkbox').checked = true;
+      document.getElementById('category_select').value = 'Infrastructure';
+      document.getElementById('directed_select').value = 'Administration Staff';
+      document.getElementById('complaint_desc').value = 'CRITICAL EMERGENCY HAZARD: Exposed live electrical wire sparking near the ground-floor water cooler, immediate life-safety hazard!';
+    }
+
+    function openDetailModal(id) {
+      const el = document.getElementById('cdata-' + id);
+      if (!el) return;
+
+      document.getElementById('m_id').innerText = '#' + el.dataset.id;
+      document.getElementById('m_category').innerText = el.dataset.category;
+      document.getElementById('m_directed').innerText = el.dataset.directed;
+      document.getElementById('m_urgency').innerText = el.dataset.urgency + ' Priority';
+      document.getElementById('m_status').innerText = el.dataset.status;
+      document.getElementById('m_date').innerText = el.dataset.date;
+
+      const descEl = el.querySelector('.desc-content');
+      const desc = descEl ? descEl.innerText.trim() : '';
+      document.getElementById('m_description').innerText = desc || 'No detailed description provided.';
+
+      const groupContainer = document.getElementById('m_group_container');
+      if (el.dataset.group) {
+        document.getElementById('m_group').innerText = '#' + el.dataset.group;
+        groupContainer.classList.remove('hidden');
+      } else {
+        groupContainer.classList.add('hidden');
+      }
+
+      const commentEl = el.querySelector('.admin-comment-content');
+      const comment = commentEl ? commentEl.innerText.trim() : '';
+      const adminCommentContainer = document.getElementById('m_admin_comment_container');
+      if (comment) {
+        document.getElementById('m_admin_comment').innerText = comment;
+        adminCommentContainer.classList.remove('hidden');
+      } else {
+        adminCommentContainer.classList.add('hidden');
+      }
+
+      document.getElementById('detailModal').classList.remove('hidden');
+    }
+
+    function closeDetailModal() {
+      document.getElementById('detailModal').classList.add('hidden');
+    }
+  </script>
+</body>
+</html>

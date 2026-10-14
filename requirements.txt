@@ -1,0 +1,21 @@
+# ======================================================================================
+# Smart University Complaint System (SUCS v1.0) - Python Dependencies
+# ======================================================================================
+
+# Web Framework: Core HTTP routing, Jinja2 templating, and session handling
+flask>=3.0.0
+
+# CORS Support: Cross-Origin Resource Sharing middleware
+flask-cors>=4.0.0
+
+# JWT Authentication: Token encoding and decoding for secure API verification
+pyjwt>=2.8.0
+
+# Cryptography: Blowfish-based password hashing algorithm
+bcrypt>=4.0.0
+
+# Security Utilities: PBKDF2:SHA256 password hashing and secure HTTP helpers
+werkzeug>=3.0.0
+
+# Automated Testing: Unit test framework for endpoint and business logic testing
+pytest>=8.0.0

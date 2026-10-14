@@ -1,0 +1,556 @@
+<!--
+========================================================================================
+FILE: templates/admin.html
+PURPOSE:
+  SUCS (Smart University Complaint System) Administrator Triage & Resolution Dashboard.
+  Implements:
+    - Overview KPI metric cards (Pending, In-Progress, Emergency, Solved counts).
+    - Auto-combining similar complaints with 1-click group resolution.
+    - "In-Progress" status tracking with MANDATORY update comment.
+    - Urgency-sorted queue (Emergency Red pulse first).
+    - Slide-over Sidebar for past complaints history.
+========================================================================================
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SUCS Admin Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+  <!-- ================================================================================= -->
+  <!-- TOP NAVIGATION BAR                                                                -->
+  <!-- ================================================================================= -->
+  <nav class="bg-slate-900 text-white p-4 border-b border-slate-800 flex justify-between items-center sticky top-0 z-40">
+    <div class="flex items-center gap-3">
+      <div class="p-2 bg-emerald-600 rounded-lg">🛡️</div>
+      <div>
+        <h1 class="font-bold text-base">Smart University Complaint System</h1>
+        <p class="text-xs text-emerald-300">Admin Workflow Portal • {{ session.username }}</p>
+      </div>
+    </div>
+    <div class="flex items-center gap-3">
+      <button onclick="togglePastSidebar()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-emerald-300 rounded-lg text-xs font-semibold border border-slate-700 cursor-pointer flex items-center gap-1.5">
+        <span>📂 Past Complaints Sidebar</span>
+        <span class="bg-emerald-900/80 text-emerald-300 px-1.5 py-0.2 rounded text-[10px]">{{ past_complaints|length }}</span>
+      </button>
+      <a href="/logout" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 rounded-lg text-xs font-semibold">Logout</a>
+    </div>
+  </nav>
+
+  <div class="max-w-6xl mx-auto p-6 space-y-6">
+
+    <!-- Flash Message Feedback -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="p-4 rounded-xl text-sm font-semibold {% if category == 'danger' %}bg-red-50 text-red-800 border border-red-200{% elif category == 'success' %}bg-emerald-50 text-emerald-800 border border-emerald-200{% elif category == 'info' %}bg-blue-50 text-blue-800 border border-blue-200{% else %}bg-amber-50 text-amber-800 border border-amber-200{% endif %}">
+            {{ message }}
+          </div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    <!-- =============================================================================== -->
+    <!-- SECTION 1: DASHBOARD TICKET OVERVIEW METRICS                                    -->
+    <!-- =============================================================================== -->
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <!-- Pending Complaints -->
+      <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
+        <span class="text-xs font-bold text-slate-500 uppercase">Pending Review</span>
+        <div class="mt-2 flex items-baseline justify-between">
+          <span class="text-2xl font-black text-amber-600">{{ pending_count }}</span>
+          <span class="text-xs bg-amber-50 text-amber-700 px-2 py-0.5 rounded font-bold">Awaiting Action</span>
+        </div>
+      </div>
+
+      <!-- In-Progress Complaints -->
+      <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
+        <span class="text-xs font-bold text-slate-500 uppercase">In-Progress</span>
+        <div class="mt-2 flex items-baseline justify-between">
+          <span class="text-2xl font-black text-blue-600">{{ in_progress_count }}</span>
+          <span class="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded font-bold">Investigation Active</span>
+        </div>
+      </div>
+
+      <!-- Emergency Alerts -->
+      <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
+        <span class="text-xs font-bold text-slate-500 uppercase">Emergency Alerts</span>
+        <div class="mt-2 flex items-baseline justify-between">
+          <span class="text-2xl font-black text-red-600">{{ emergency_count }}</span>
+          <span class="text-xs bg-red-100 text-red-800 px-2 py-0.5 rounded font-bold animate-pulse">Top Priority</span>
+        </div>
+      </div>
+
+      <!-- Past / Solved Count -->
+      <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
+        <span class="text-xs font-bold text-slate-500 uppercase">Past Resolved</span>
+        <div class="mt-2 flex items-baseline justify-between">
+          <span class="text-2xl font-black text-emerald-600">{{ solved_count }}</span>
+          <button onclick="togglePastSidebar()" class="text-[11px] text-emerald-700 font-bold hover:underline cursor-pointer">
+            View Sidebar →
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- =============================================================================== -->
+    <!-- SECTION 2: ADMIN COMPLAINT QUEUE & AUTO-COMBINING CONTROLS                      -->
+    <!-- =============================================================================== -->
+    <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+      
+      <!-- Queue Header & Smart Grouping / Auto-Combine Action Buttons -->
+      <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b pb-4">
+        <div>
+          <h2 class="text-lg font-bold text-slate-900">Admin Active Complaint Queue</h2>
+          <p class="text-xs text-slate-500">Sorted by urgency (Emergency/High first). Complaints related to same person/issue are auto-combined for 1-click solving.</p>
+        </div>
+
+        <div class="flex items-center gap-2 flex-wrap">
+          <!-- Auto-Combine Action Form -->
+          <form action="/admin/auto-group" method="POST" class="inline">
+            <button type="submit" class="px-3 py-2 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 font-bold text-xs rounded-xl shadow-xs transition cursor-pointer flex items-center gap-1">
+              <span>⚡ Auto-Combine Similar Issues</span>
+            </button>
+          </form>
+
+          <!-- Manual Grouping Form -->
+          <form action="/admin/group" method="POST" id="groupForm" class="inline">
+            <button type="submit" class="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow transition cursor-pointer">
+              🔗 Group Selected
+            </button>
+          </form>
+        </div>
+      </div>
+
+      <!-- Empty State -->
+      {% if complaints|length == 0 %}
+        <div class="text-center py-12 space-y-2">
+          <p class="text-3xl">🎉</p>
+          <p class="text-sm font-bold text-slate-700">No active complaints pending in Admin queue.</p>
+          <p class="text-xs text-slate-400">All student issues have been solved or forwarded to HOD.</p>
+          <button onclick="togglePastSidebar()" class="mt-2 text-xs text-emerald-600 font-bold hover:underline cursor-pointer">
+            Browse Past Resolved Complaints ({{ past_complaints|length }}) →
+          </button>
+        </div>
+      {% else %}
+        <!-- Complaint List -->
+        <div class="space-y-3">
+          {% for c in complaints %}
+            <div class="p-4 rounded-xl border transition-all {% if c.UrgencyLevel == 'Emergency' %}border-red-500 bg-red-50 shadow-md ring-2 ring-red-400{% else %}border-slate-200 bg-white shadow-sm{% endif %}">
+              <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                
+                <div class="flex items-start gap-3 w-full md:w-auto">
+                  <input type="checkbox" name="complaint_ids" value="{{ c.ID }}" form="groupForm" class="mt-1 w-4 h-4 text-indigo-600 rounded cursor-pointer" title="Select to group"/>
+                  
+                  <div class="space-y-1 w-full">
+                    <!-- Badges & Metadata Header -->
+                    <div class="flex items-center gap-2 flex-wrap">
+                      <span class="font-mono text-xs font-bold text-blue-600">#{{ c.ID }}</span>
+                      
+                      <!-- EMERGENCY BADGE -->
+                      {% if c.UrgencyLevel == 'Emergency' %}
+                        <span class="px-2.5 py-0.5 bg-red-600 text-white text-xs font-extrabold rounded-full animate-bounce shadow">
+                          🚨 EMERGENCY TOP QUEUE
+                        </span>
+                      {% endif %}
+
+                      <!-- Priority Tag -->
+                      <span class="px-2 py-0.5 text-xs font-bold rounded {% if c.UrgencyLevel == 'Emergency' or c.UrgencyLevel == 'High' %}bg-red-100 text-red-800{% elif c.UrgencyLevel == 'Medium' %}bg-amber-100 text-amber-800{% else %}bg-slate-100 text-slate-800{% endif %}">
+                        {{ c.UrgencyLevel }} Priority
+                      </span>
+
+                      <!-- Submitting student identity -->
+                      <span class="text-xs text-slate-500">Filed by <strong>{{ c.StudentUsername }}</strong></span>
+                      <span class="text-xs text-slate-400">• {{ c.DateSubmitted }}</span>
+                    </div>
+
+                    <!-- Category & Routing Target -->
+                    <div class="text-xs text-slate-700 space-y-1">
+                      <p>Category: <strong>{{ c.Category }}</strong> | Directed Against: <strong>{{ c.DirectedAgainst }}</strong></p>
+                      
+                      {% if c.Description %}
+                        <p class="p-2 bg-slate-50 rounded-lg border border-slate-200 text-slate-700 text-xs mt-1 line-clamp-2 break-all break-words [word-break:break-word]">{{ c.Description }}</p>
+                      {% endif %}
+
+                      <!-- Admin Progress / Response Note -->
+                      {% if c.AdminComment %}
+                        <div class="p-2 {% if c.Status == 'In-Progress' %}bg-blue-50 border-blue-200 text-blue-900{% else %}bg-emerald-50 border-emerald-200 text-emerald-900{% endif %} border rounded-lg text-xs mt-1">
+                          💬 <strong>Admin Note:</strong> {{ c.AdminComment }}
+                        </div>
+                      {% endif %}
+
+                      <!-- AUTO-COMBINED GROUP BADGE & 1-CLICK RESOLVE BUTTON -->
+                      {% if c.GroupID %}
+                        <div class="mt-2 p-2 bg-indigo-50 border border-indigo-200 rounded-lg flex flex-wrap items-center justify-between gap-2">
+                          <span class="text-indigo-900 font-bold text-xs flex items-center gap-1.5">
+                            <span>🔗 Auto-Combined Master Group #{{ c.GroupID }}</span>
+                            <span class="text-[10px] text-indigo-600 bg-white px-1.5 py-0.5 rounded border border-indigo-200">Related Issues Clustered</span>
+                          </span>
+                          
+                          <!-- 1-Click Solve Whole Group Button -->
+                          <button type="button" 
+                                  onclick="openGroupResolveModal('{{ c.GroupID }}')"
+                                  class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg shadow cursor-pointer flex items-center gap-1">
+                            <span>⚡ 1-Click Solve All Related</span>
+                          </button>
+                        </div>
+                      {% endif %}
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Admin Action Controls -->
+                <div class="flex items-center gap-2 flex-wrap">
+                  <!-- Hidden DOM container used by openDetailModal() -->
+                  <div id="cdata-{{ c.ID }}" class="hidden"
+                       data-id="{{ c.ID }}"
+                       data-student="{{ c.StudentUsername }}"
+                       data-category="{{ c.Category }}"
+                       data-directed="{{ c.DirectedAgainst }}"
+                       data-urgency="{{ c.UrgencyLevel }}"
+                       data-status="{{ c.Status }}"
+                       data-date="{{ c.DateSubmitted }}"
+                       data-group="{{ c.GroupID or '' }}">
+                    <div class="desc-content">{{ c.Description }}</div>
+                    <div class="admin-comment-content">{{ c.AdminComment or '' }}</div>
+                  </div>
+
+                  <!-- View Details -->
+                  <button type="button" 
+                          onclick="openDetailModal('{{ c.ID }}')"
+                          class="px-2.5 py-1 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg text-xs font-semibold border border-blue-200 cursor-pointer">
+                    👁️ Details
+                  </button>
+
+                  <!-- Status Badge -->
+                  <span class="px-2.5 py-1 rounded text-xs font-bold uppercase {% if c.Status == 'Solved' %}bg-emerald-100 text-emerald-800 border border-emerald-300{% elif c.Status == 'In-Progress' %}bg-blue-100 text-blue-800 border border-blue-300 animate-pulse{% elif c.Status == 'Forwarded' %}bg-purple-100 text-purple-800 border border-purple-300{% else %}bg-amber-100 text-amber-800 border border-amber-300{% endif %}">
+                    {{ c.Status }}
+                  </span>
+
+                  {% if c.Status != 'Solved' %}
+                    <!-- Mark In-Progress Button (with mandatory comment) -->
+                    <button type="button" 
+                            onclick="openInProgressModal('{{ c.ID }}')"
+                            class="px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg shadow cursor-pointer">
+                      ⏳ In-Progress
+                    </button>
+
+                    <!-- Respond & Solve Button -->
+                    <button type="button" 
+                            onclick="openResolveModal('{{ c.ID }}')"
+                            class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg shadow cursor-pointer">
+                      💬 Respond & Solve
+                    </button>
+
+                    <!-- Forward to HOD -->
+                    <form action="/admin/action/{{ c.ID }}/forward" method="POST" class="inline">
+                      <button type="submit" class="px-2.5 py-1.5 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold rounded-lg shadow cursor-pointer">
+                        Forward to HOD
+                      </button>
+                    </form>
+                  {% endif %}
+                </div>
+
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+
+    </div>
+
+  </div>
+
+  <!-- ================================================================================= -->
+  <!-- SIDEBAR: PAST COMPLAINTS HISTORY SLIDE-OVER                                       -->
+  <!-- ================================================================================= -->
+  <div id="pastSidebar" class="hidden fixed inset-0 z-50 overflow-hidden">
+    <!-- Backdrop -->
+    <div onclick="togglePastSidebar()" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs transition-opacity"></div>
+    
+    <div class="fixed inset-y-0 right-0 max-w-full flex pl-10">
+      <div class="w-screen max-w-md bg-white shadow-2xl flex flex-col">
+        <!-- Sidebar Header -->
+        <div class="p-5 bg-slate-900 text-white flex justify-between items-center border-b border-slate-800">
+          <div>
+            <h3 class="font-bold text-base flex items-center gap-2">
+              <span>📂 Past Resolved Complaints</span>
+              <span class="bg-emerald-600 text-white text-xs px-2 py-0.5 rounded-full font-mono">{{ past_complaints|length }}</span>
+            </h3>
+            <p class="text-xs text-slate-400 mt-0.5">Historical log of all closed and resolved tickets</p>
+          </div>
+          <button onclick="togglePastSidebar()" class="text-slate-400 hover:text-white font-bold text-2xl px-2 cursor-pointer">&times;</button>
+        </div>
+
+        <!-- Sidebar Content -->
+        <div class="flex-1 overflow-y-auto p-5 space-y-3">
+          {% if past_complaints|length == 0 %}
+            <p class="text-xs text-slate-400 text-center py-8">No resolved complaints recorded yet.</p>
+          {% else %}
+            {% for pc in past_complaints %}
+              <div class="p-3.5 rounded-xl border border-slate-200 bg-slate-50 space-y-1.5 text-xs text-slate-700">
+                <div class="flex justify-between items-center">
+                  <span class="font-mono font-bold text-blue-600">#{{ pc.ID }}</span>
+                  <span class="px-2 py-0.5 bg-emerald-100 text-emerald-800 font-bold rounded text-[10px]">SOLVED</span>
+                </div>
+                <p>Category: <strong>{{ pc.Category }}</strong></p>
+                <p>Directed Against: <strong>{{ pc.DirectedAgainst }}</strong></p>
+                <p class="text-[11px] text-slate-500">Student: <strong>{{ pc.StudentUsername }}</strong> • {{ pc.DateSubmitted }}</p>
+                {% if pc.AdminComment %}
+                  <div class="p-2 bg-emerald-50 border border-emerald-200 text-emerald-900 rounded text-[11px] font-medium">
+                    💬 <strong>Resolution:</strong> {{ pc.AdminComment }}
+                  </div>
+                {% endif %}
+              </div>
+            {% endfor %}
+          {% endif %}
+        </div>
+
+        <div class="p-4 border-t bg-slate-50 flex justify-end">
+          <button onclick="togglePastSidebar()" class="px-4 py-2 bg-slate-800 text-white rounded-xl text-xs font-semibold hover:bg-slate-700 cursor-pointer">
+            Close Sidebar
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================================================================================= -->
+  <!-- MODAL: MARK IN-PROGRESS (MANDATORY COMMENT REQUIRED)                              -->
+  <!-- ================================================================================= -->
+  <div id="inProgressModal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+    <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 border border-slate-200">
+      <div class="flex justify-between items-center border-b pb-3">
+        <h3 class="font-bold text-slate-900 text-base">Update Status to In-Progress <span id="ip_id" class="font-mono text-blue-600"></span></h3>
+        <button onclick="closeInProgressModal()" class="text-slate-400 hover:text-slate-600 font-bold text-xl px-2 cursor-pointer">&times;</button>
+      </div>
+
+      <form id="inProgressForm" method="POST" class="space-y-4">
+        <div>
+          <label class="block text-xs font-bold uppercase text-slate-700 mb-1">
+            Progress Note / Investigation Update * <span class="text-red-500">(Mandatory)</span>
+          </label>
+          <textarea name="admin_comment" rows="3" required placeholder="State action taken or investigation status (e.g., Electrician dispatched to site; testing line breaker)..." class="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"></textarea>
+        </div>
+
+        <div class="flex justify-end gap-2">
+          <button type="button" onclick="closeInProgressModal()" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-xs font-semibold hover:bg-slate-200 cursor-pointer">Cancel</button>
+          <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold hover:bg-blue-700 shadow cursor-pointer">Set In-Progress with Comment</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ================================================================================= -->
+  <!-- MODAL: RESPOND & RESOLVE COMPLAINT                                                -->
+  <!-- ================================================================================= -->
+  <div id="resolveModal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+    <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 border border-slate-200">
+      <div class="flex justify-between items-center border-b pb-3">
+        <h3 class="font-bold text-slate-900 text-base">Respond & Resolve Complaint <span id="r_id" class="font-mono text-blue-600"></span></h3>
+        <button onclick="closeResolveModal()" class="text-slate-400 hover:text-slate-600 font-bold text-xl px-2 cursor-pointer">&times;</button>
+      </div>
+
+      <form id="resolveForm" method="POST" class="space-y-4">
+        <div>
+          <label class="block text-xs font-bold uppercase text-slate-700 mb-1">Admin Response / Resolution Comment *</label>
+          <textarea name="admin_comment" rows="3" required placeholder="Type official response or action taken (e.g., Electrician repaired live wire at workbench 4)..." class="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none"></textarea>
+        </div>
+
+        <div class="flex justify-end gap-2">
+          <button type="button" onclick="closeResolveModal()" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-xs font-semibold hover:bg-slate-200 cursor-pointer">Cancel</button>
+          <button type="submit" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold hover:bg-emerald-700 shadow cursor-pointer">Mark Solved with Response</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ================================================================================= -->
+  <!-- MODAL: 1-CLICK RESOLVE WHOLE GROUP                                                -->
+  <!-- ================================================================================= -->
+  <div id="groupResolveModal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+    <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 border border-slate-200">
+      <div class="flex justify-between items-center border-b pb-3">
+        <h3 class="font-bold text-slate-900 text-base">1-Click Solve Master Group <span id="grp_id" class="font-mono text-indigo-600"></span></h3>
+        <button onclick="closeGroupResolveModal()" class="text-slate-400 hover:text-slate-600 font-bold text-xl px-2 cursor-pointer">&times;</button>
+      </div>
+
+      <form id="groupResolveForm" method="POST" class="space-y-4">
+        <p class="text-xs text-slate-600">
+          This single action will mark <strong>ALL related complaints</strong> linked to this issue as <strong>Solved</strong> simultaneously with the resolution note below.
+        </p>
+
+        <div>
+          <label class="block text-xs font-bold uppercase text-slate-700 mb-1">Group Resolution Remarks *</label>
+          <textarea name="admin_comment" rows="3" required placeholder="State common root cause fix (e.g., Main campus water pump repaired; water supply fully restored)..." class="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none"></textarea>
+        </div>
+
+        <div class="flex justify-end gap-2">
+          <button type="button" onclick="closeGroupResolveModal()" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-xs font-semibold hover:bg-slate-200 cursor-pointer">Cancel</button>
+          <button type="submit" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold hover:bg-emerald-700 shadow cursor-pointer">⚡ Solve All in Group Now</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ================================================================================= -->
+  <!-- MODAL: COMPLAINT DETAILS INSPECTOR                                                -->
+  <!-- ================================================================================= -->
+  <div id="detailModal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+    <div class="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4 border border-slate-200 relative">
+      <div class="flex justify-between items-center border-b pb-3">
+        <h3 class="font-bold text-slate-900 text-lg flex items-center gap-2">
+          <span>Admin Complaint Details</span>
+          <span id="m_id" class="font-mono text-xs font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-200"></span>
+        </h3>
+        <button onclick="closeDetailModal()" class="text-slate-400 hover:text-slate-600 font-bold text-xl px-2 cursor-pointer">&times;</button>
+      </div>
+
+      <div class="space-y-3 text-xs text-slate-700">
+        <div class="flex justify-between items-center bg-slate-50 p-2.5 rounded-lg border">
+          <span>Status: <strong id="m_status" class="font-bold uppercase"></strong></span>
+          <span>Priority: <strong id="m_urgency" class="font-bold"></strong></span>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <span class="text-slate-400 block font-semibold">Student Username</span>
+            <strong id="m_student" class="text-slate-900 text-sm"></strong>
+          </div>
+          <div>
+            <span class="text-slate-400 block font-semibold">Category</span>
+            <strong id="m_category" class="text-slate-900 text-sm"></strong>
+          </div>
+        </div>
+
+        <div>
+          <span class="text-slate-400 block font-semibold">Directed Against (Department/Person)</span>
+          <strong id="m_directed" class="text-slate-900 text-sm"></strong>
+        </div>
+
+        <div>
+          <span class="text-slate-400 block font-semibold">Date Submitted</span>
+          <span id="m_date" class="text-slate-800 font-mono"></span>
+        </div>
+
+        <div id="m_group_container" class="hidden">
+          <span class="text-indigo-600 font-semibold block bg-indigo-50 p-2 rounded border border-indigo-200">
+            Combined under Master Group <strong id="m_group"></strong>
+          </span>
+        </div>
+
+        <div>
+          <span class="text-slate-400 block font-semibold mb-1">Full Detailed Description</span>
+          <div id="m_description" class="p-3 bg-slate-50 rounded-xl border border-slate-200 text-slate-800 text-xs leading-relaxed max-h-48 overflow-y-auto break-all break-words [word-break:break-word] whitespace-pre-wrap"></div>
+        </div>
+
+        <div id="m_admin_comment_container" class="hidden">
+          <span class="text-emerald-700 block font-bold mb-1">💬 Admin Official Response</span>
+          <div id="m_admin_comment" class="p-3 bg-emerald-50 rounded-xl border border-emerald-200 text-emerald-900 text-xs leading-relaxed font-semibold"></div>
+        </div>
+      </div>
+
+      <div class="pt-3 border-t flex justify-between items-center">
+        <div id="modal_actions" class="flex gap-2"></div>
+        <button onclick="closeDetailModal()" class="px-4 py-2 bg-slate-800 text-white rounded-xl text-xs font-semibold hover:bg-slate-700 cursor-pointer">
+          Close Window
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- JavaScript Controllers -->
+  <script>
+    function togglePastSidebar() {
+      const sb = document.getElementById('pastSidebar');
+      sb.classList.toggle('hidden');
+    }
+
+    function openInProgressModal(id) {
+      document.getElementById('ip_id').innerText = '#' + id;
+      document.getElementById('inProgressForm').action = '/admin/action/' + id + '/in_progress';
+      document.getElementById('inProgressModal').classList.remove('hidden');
+    }
+
+    function closeInProgressModal() {
+      document.getElementById('inProgressModal').classList.add('hidden');
+    }
+
+    function openResolveModal(id) {
+      document.getElementById('r_id').innerText = '#' + id;
+      document.getElementById('resolveForm').action = '/admin/action/' + id + '/solve';
+      document.getElementById('resolveModal').classList.remove('hidden');
+    }
+
+    function closeResolveModal() {
+      document.getElementById('resolveModal').classList.add('hidden');
+    }
+
+    function openGroupResolveModal(groupId) {
+      document.getElementById('grp_id').innerText = '#' + groupId;
+      document.getElementById('groupResolveForm').action = '/admin/resolve-group/' + groupId;
+      document.getElementById('groupResolveModal').classList.remove('hidden');
+    }
+
+    function closeGroupResolveModal() {
+      document.getElementById('groupResolveModal').classList.add('hidden');
+    }
+
+    function openDetailModal(id) {
+      const el = document.getElementById('cdata-' + id);
+      if (!el) return;
+
+      document.getElementById('m_id').innerText = '#' + el.dataset.id;
+      document.getElementById('m_student').innerText = el.dataset.student;
+      document.getElementById('m_category').innerText = el.dataset.category;
+      document.getElementById('m_directed').innerText = el.dataset.directed;
+      document.getElementById('m_urgency').innerText = el.dataset.urgency + ' Priority';
+      document.getElementById('m_status').innerText = el.dataset.status;
+      document.getElementById('m_date').innerText = el.dataset.date;
+
+      const descEl = el.querySelector('.desc-content');
+      const desc = descEl ? descEl.innerText.trim() : '';
+      document.getElementById('m_description').innerText = desc || 'No detailed description provided.';
+
+      const groupContainer = document.getElementById('m_group_container');
+      if (el.dataset.group) {
+        document.getElementById('m_group').innerText = '#' + el.dataset.group;
+        groupContainer.classList.remove('hidden');
+      } else {
+        groupContainer.classList.add('hidden');
+      }
+
+      const commentEl = el.querySelector('.admin-comment-content');
+      const comment = commentEl ? commentEl.innerText.trim() : '';
+      const adminCommentContainer = document.getElementById('m_admin_comment_container');
+      if (comment) {
+        document.getElementById('m_admin_comment').innerText = comment;
+        adminCommentContainer.classList.remove('hidden');
+      } else {
+        adminCommentContainer.classList.add('hidden');
+      }
+
+      const actionsDiv = document.getElementById('modal_actions');
+      if (el.dataset.status !== 'Solved') {
+        actionsDiv.innerHTML = `
+          <button type="button" onclick="closeDetailModal(); openInProgressModal('${id}');" class="px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg shadow cursor-pointer">⏳ In-Progress</button>
+          <button type="button" onclick="closeDetailModal(); openResolveModal('${id}');" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg shadow cursor-pointer">💬 Respond & Solve</button>
+        `;
+      } else {
+        actionsDiv.innerHTML = '<span class="text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded border border-emerald-200">SOLVED</span>';
+      }
+
+      document.getElementById('detailModal').classList.remove('hidden');
+    }
+
+    function closeDetailModal() {
+      document.getElementById('detailModal').classList.add('hidden');
+    }
+  </script>
+
+</body>
+</html>
